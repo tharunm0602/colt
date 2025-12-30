@@ -26,6 +26,6 @@ provider "google-beta" {
 terraform {
   backend "gcs" {
     bucket = "build_logs_001"     #bucket name
-    prefix = "vpc/vpc-terraform/state"  #it is like a folder structure you can change prefix as per the requirement
+    prefix = "sa/colt-sbx-sa/state"  #it is like a folder structure you can change prefix as per the requirement
   }
 }
