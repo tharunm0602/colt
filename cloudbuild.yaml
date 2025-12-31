@@ -1,0 +1,104 @@
+steps:
+  # 1. Fetch Git History
+  # Fetches the specific commit and its parent to allow for a diff comparison.
+  - name: 'gcr.io/cloud-builders/git'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        echo "Initializing build for commit ${COMMIT_SHA}..."
+        git fetch --depth=2 origin ${COMMIT_SHA}
+        git checkout ${COMMIT_SHA}
+    id: 'fetch-history'
+
+  # 2. Detect Changed Directories
+  # Identifies which directories contain modified .tf files.
+  - name: 'gcr.io/cloud-builders/git'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        # Diff against the parent (HEAD~1) to identify changes
+        git diff --name-only HEAD~1 HEAD > changed_files.txt
+        
+        # Filter for .tf files, extract directory paths, and ensure uniqueness
+        grep "\.tf$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
+        
+        # Count changes for logging (without listing all files)
+        CHANGE_COUNT=$(wc -l < changed_dirs.txt)
+        echo "Detected Terraform changes in $CHANGE_COUNT directories."
+    id: 'detect-changes'
+
+  # 3. Code Scanning (TFLint)
+  # Runs TFLint only on the directories that have changed.
+  - name: 'ghcr.io/terraform-linters/tflint'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -e
+        if [ ! -s changed_dirs.txt ]; then
+          echo "No Terraform changes detected. Skipping linting."
+          exit 0
+        fi
+
+        for DIR in $(cat changed_dirs.txt); do
+          if [ -d "$DIR" ]; then
+            echo "Starting TFLint for: $DIR"
+            cd "$DIR"
+            tflint --init
+            tflint
+            cd - > /dev/null
+          fi
+        done
+    id: 'tflint'
+
+  # 4. Terraform Init and Plan
+  # Executes Terraform Init and Plan for each modified directory.
+  - name: 'hashicorp/terraform:latest'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -e
+        if [ ! -s changed_dirs.txt ]; then
+          echo "No Terraform changes detected. Skipping plan."
+          exit 0
+        fi
+
+        for DIR in $(cat changed_dirs.txt); do
+          if [ -d "$DIR" ]; then
+            echo "------------------------------------------------"
+            echo "Processing Module: $DIR"
+            
+            cd "$DIR"
+            
+            # Verify directory contains Terraform files before initializing
+            if ls *.tf 1> /dev/null 2>&1; then
+              echo "Running 'terraform init'..."
+              terraform init -input=false -no-color
+              
+              echo "Running 'terraform plan'..."
+              terraform plan -input=false -no-color -out=tfplan
+              
+              echo "Plan completed successfully for $DIR."
+            else
+              echo "Skipping $DIR (No .tf files found)."
+            fi
+            
+            cd - > /dev/null
+          else
+            echo "Warning: Directory $DIR was removed or does not exist."
+          fi
+        done
+    id: 'terraform-plan'
+
+options:
+  logging: GCS_ONLY
+  logsBucket: 'gs://build_logs_001'
+
+substitutions:
+  _REPO_NAME: ${REPO_NAME}
+  _BRANCH_NAME: ${BRANCH_NAME}
