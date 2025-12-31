@@ -1,0 +1,94 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  GCS_LOG_BUCKET: build_logs_001
+
+jobs:
+  terraform:
+    name: Terraform Runner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write' # Required for Workload Identity Federation
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # Authenticate to Google Cloud using Workload Identity Federation
+      # You must configure these secrets in your GitHub Repository settings
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Detect Changes and Run Terraform
+        run: |
+          set -e
+          
+          # 1. Detect Changes
+          echo "Detecting changes..."
+          git diff --name-only HEAD~1 HEAD > changed_files.txt
+          grep "\.tf$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
+          
+          if [ ! -s changed_dirs.txt ]; then
+            echo "No Terraform changes detected."
+            exit 0
+          fi
+          
+          # 2. Prepare Log File
+          LOG_FILE="terraform_run_${{ github.run_id }}.log"
+          touch $LOG_FILE
+          
+          echo "Processing directories:" >> $LOG_FILE
+          cat changed_dirs.txt >> $LOG_FILE
+          
+          # 3. Iterate and Execute
+          for DIR in $(cat changed_dirs.txt); do
+            if [ -d "$DIR" ]; then
+              echo "------------------------------------------------" | tee -a $LOG_FILE
+              echo "Processing: $DIR" | tee -a $LOG_FILE
+              
+              cd "$DIR"
+              
+              if ls *.tf 1> /dev/null 2>&1; then
+                # TFLint
+                echo "Running TFLint..." | tee -a ../$LOG_FILE
+                tflint --init
+                tflint | tee -a ../$LOG_FILE
+                
+                # Terraform Init
+                echo "Running Terraform Init..." | tee -a ../$LOG_FILE
+                terraform init -input=false -no-color | tee -a ../$LOG_FILE
+                
+                # Terraform Plan
+                echo "Running Terraform Plan..." | tee -a ../$LOG_FILE
+                terraform plan -input=false -no-color -out=tfplan | tee -a ../$LOG_FILE
+              else
+                 echo "Skipping $DIR (No .tf files found)" | tee -a ../$LOG_FILE
+              fi
+              
+              cd - > /dev/null
+            fi
+          done
+          
+          # 4. Upload Logs
+          echo "Uploading logs to gs://${{ env.GCS_LOG_BUCKET }}/github-actions/"
+          gcloud storage cp $LOG_FILE gs://${{ env.GCS_LOG_BUCKET }}/github-actions/$LOG_FILE
