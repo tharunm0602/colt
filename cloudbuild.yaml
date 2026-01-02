@@ -1,94 +1,91 @@
-name: Terraform CI/CD
+steps:
+  # 1. Fetch Git History
+  - name: 'gcr.io/cloud-builders/git'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        echo "Initializing build for commit ${COMMIT_SHA}..."
+        git fetch --depth=2 origin ${COMMIT_SHA}
+        git checkout ${COMMIT_SHA}
+    id: 'fetch-history'
 
-on:
-  push:
-    branches:
-      - main
+  # 2. Detect Changed Directories
+  - name: 'gcr.io/cloud-builders/git'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        git diff --name-only HEAD~1 HEAD > changed_files.txt
+        grep "\.tf$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
+        CHANGE_COUNT=$(wc -l < changed_dirs.txt)
+        echo "Detected Terraform changes in $CHANGE_COUNT directories."
+    id: 'detect-changes'
 
-env:
-  GCS_LOG_BUCKET: build_logs_001
+  # 3. Code Scanning (TFLint)
+  - name: 'ghcr.io/terraform-linters/tflint'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -e
+        if [ ! -s changed_dirs.txt ]; then
+          echo "No Terraform changes detected. Skipping linting."
+          exit 0
+        fi
 
-jobs:
-  terraform:
-    name: Terraform Runner
-    runs-on: ubuntu-latest
-    permissions:
-      contents: 'read'
-      id-token: 'write' # Required for Workload Identity Federation
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      # Authenticate to Google Cloud using Workload Identity Federation
-      # You must configure these secrets in your GitHub Repository settings
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
-          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
-
-      - name: Detect Changes and Run Terraform
-        run: |
-          set -e
-          
-          # 1. Detect Changes
-          echo "Detecting changes..."
-          git diff --name-only HEAD~1 HEAD > changed_files.txt
-          grep "\.tf$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
-          
-          if [ ! -s changed_dirs.txt ]; then
-            echo "No Terraform changes detected."
-            exit 0
+        for DIR in $(cat changed_dirs.txt); do
+          if [ -d "$DIR" ]; then
+            echo "Starting TFLint for: $DIR"
+            cd "$DIR"
+            tflint --init
+            tflint
+            cd - > /dev/null
           fi
-          
-          # 2. Prepare Log File
-          LOG_FILE="terraform_run_${{ github.run_id }}.log"
-          touch $LOG_FILE
-          
-          echo "Processing directories:" >> $LOG_FILE
-          cat changed_dirs.txt >> $LOG_FILE
-          
-          # 3. Iterate and Execute
-          for DIR in $(cat changed_dirs.txt); do
-            if [ -d "$DIR" ]; then
-              echo "------------------------------------------------" | tee -a $LOG_FILE
-              echo "Processing: $DIR" | tee -a $LOG_FILE
-              
-              cd "$DIR"
-              
-              if ls *.tf 1> /dev/null 2>&1; then
-                # TFLint
-                echo "Running TFLint..." | tee -a ../$LOG_FILE
-                tflint --init
-                tflint | tee -a ../$LOG_FILE
-                
-                # Terraform Init
-                echo "Running Terraform Init..." | tee -a ../$LOG_FILE
-                terraform init -input=false -no-color | tee -a ../$LOG_FILE
-                
-                # Terraform Plan
-                echo "Running Terraform Plan..." | tee -a ../$LOG_FILE
-                terraform plan -input=false -no-color -out=tfplan | tee -a ../$LOG_FILE
-              else
-                 echo "Skipping $DIR (No .tf files found)" | tee -a ../$LOG_FILE
-              fi
-              
-              cd - > /dev/null
+        done
+    id: 'tflint'
+
+  # 4. Terraform Init and Plan
+  - name: 'hashicorp/terraform:latest'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -e
+        if [ ! -s changed_dirs.txt ]; then
+          echo "No Terraform changes detected. Skipping plan."
+          exit 0
+        fi
+
+        for DIR in $(cat changed_dirs.txt); do
+          if [ -d "$DIR" ]; then
+            echo "------------------------------------------------"
+            echo "Processing Module: $DIR"
+            cd "$DIR"
+            if ls *.tf 1> /dev/null 2>&1; then
+              echo "Running 'terraform init'..."
+              terraform init -input=false -no-color
+              echo "Running 'terraform plan'..."
+              terraform plan -input=false -no-color -out=tfplan
+              echo "Plan completed successfully for $DIR."
+            else
+              echo "Skipping $DIR (No .tf files found)."
             fi
-          done
-          
-          # 4. Upload Logs
-          echo "Uploading logs to gs://${{ env.GCS_LOG_BUCKET }}/github-actions/"
-          gcloud storage cp $LOG_FILE gs://${{ env.GCS_LOG_BUCKET }}/github-actions/$LOG_FILE
+            cd - > /dev/null
+          else
+            echo "Warning: Directory $DIR was removed or does not exist."
+          fi
+        done
+    id: 'terraform-plan'
+
+# Top-level configuration (NOT indented)
+logsBucket: 'gs://build_logs_001'
+
+options:
+  logging: GCS_ONLY
+
+substitutions:
+  _REPO_NAME: ${REPO_NAME}
+  _BRANCH_NAME: ${BRANCH_NAME}
