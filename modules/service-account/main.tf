@@ -23,7 +23,6 @@ resource "google_service_account" "sa" {
 
 resource "google_project_iam_member" "roles" {
   for_each = toset(var.project_roles)
-
   project  = var.project_id
   role     = each.value
   member   = google_service_account.sa.member
