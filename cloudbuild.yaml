@@ -20,8 +20,10 @@ steps:
         set -e
         git diff --name-only HEAD~1 HEAD > changed_files.txt
         grep "\.tf$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
+        
+        # Use $$ to escape the variable so Cloud Build passes it to bash as $CHANGE_COUNT
         CHANGE_COUNT=$(wc -l < changed_dirs.txt)
-        echo "Detected Terraform changes in $CHANGE_COUNT directories."
+        echo "Detected Terraform changes in $$CHANGE_COUNT directories."
     id: 'detect-changes'
 
   # 3. Code Scanning (TFLint)
@@ -80,12 +82,8 @@ steps:
         done
     id: 'terraform-plan'
 
-# Top-level configuration (NOT indented)
+# Top-level configuration
 logsBucket: 'gs://build_logs_001'
 
 options:
   logging: GCS_ONLY
-
-substitutions:
-  _REPO_NAME: ${REPO_NAME}
-  _BRANCH_NAME: ${BRANCH_NAME}
