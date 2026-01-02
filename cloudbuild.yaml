@@ -37,9 +37,9 @@ steps:
         fi
 
         for DIR in $(cat changed_dirs.txt); do
-          if [ -d "$DIR" ]; then
-            echo "Starting TFLint for: $DIR"
-            cd "$DIR"
+          if [ -d "$$DIR" ]; then
+            echo "Starting TFLint for: $$DIR"
+            cd "$$DIR"
             tflint --init
             tflint
             cd - > /dev/null
@@ -60,22 +60,22 @@ steps:
         fi
 
         for DIR in $(cat changed_dirs.txt); do
-          if [ -d "$DIR" ]; then
+          if [ -d "$$DIR" ]; then
             echo "------------------------------------------------"
-            echo "Processing Module: $DIR"
-            cd "$DIR"
+            echo "Processing Module: $$DIR"
+            cd "$$DIR"
             if ls *.tf 1> /dev/null 2>&1; then
               echo "Running 'terraform init'..."
               terraform init -input=false -no-color
               echo "Running 'terraform plan'..."
               terraform plan -input=false -no-color -out=tfplan
-              echo "Plan completed successfully for $DIR."
+              echo "Plan completed successfully for $$DIR."
             else
-              echo "Skipping $DIR (No .tf files found)."
+              echo "Skipping $$DIR (No .tf files found)."
             fi
             cd - > /dev/null
           else
-            echo "Warning: Directory $DIR was removed or does not exist."
+            echo "Warning: Directory $$DIR was removed or does not exist."
           fi
         done
     id: 'terraform-plan'
