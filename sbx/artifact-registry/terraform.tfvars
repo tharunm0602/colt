@@ -1,6 +1,6 @@
 project_id    = "cloud-practice-dev-2"
 location      = "us-central1"
-repository_id = "colt-artifact-1"
+repository_id = "colt-artifact"
 format        = "DOCKER"
 description   = "Docker repository"
 labels        = {
