@@ -45,8 +45,9 @@ jobs:
           
           # 1. Detect Changes
           echo "Detecting changes..."
+          # Use --diff-filter=d to ignore deleted files, and include .tfvars files
           git diff --name-only HEAD~1 HEAD > changed_files.txt
-          grep "\.tf$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
+          grep -E "\.(tf|tfvars)$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
           
           if [ ! -s changed_dirs.txt ]; then
             echo "No Terraform changes detected."
