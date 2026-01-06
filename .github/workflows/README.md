@@ -18,6 +18,7 @@ gcloud iam workload-identity-pools providers create-oidc $PROVIDER_NAME \
   --workload-identity-pool=$POOL_NAME \
   --display-name="GitHub Actions Provider" \
   --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
+  --attribute-condition="attribute.repository == '${REPO}'" \
   --issuer-uri="https://token.actions.githubusercontent.com"
 
 # 4. Allow GitHub Actions to impersonate your Service Account
