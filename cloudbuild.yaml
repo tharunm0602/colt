@@ -6,7 +6,9 @@ steps:
       - '-c'
       - |
         set -e
-        echo "Initializing build for commit ${COMMIT_SHA}..."
+        if [ -n "${_GITHUB_TOKEN}" ]; then
+          git remote set-url origin https://x-access-token:${_GITHUB_TOKEN}@github.com/${_REPO_NAME}.git
+        fi
         git fetch --depth=2 origin ${COMMIT_SHA}
         git checkout ${COMMIT_SHA}
     id: 'fetch-history'
@@ -19,66 +21,74 @@ steps:
       - |
         set -e
         git diff --name-only HEAD~1 HEAD > changed_files.txt
-        grep "\.tf$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
+        grep -E "\.(tf|tfvars)$" changed_files.txt | xargs -I {} dirname {} | sort | uniq > changed_dirs.txt || true
         
-        echo "Detected Terraform changes in $(wc -l < changed_dirs.txt) directories."
+        if [ ! -s changed_dirs.txt ]; then
+          echo "No Terraform changes detected."
+        else
+          echo "Detected Terraform changes in:"
+          cat changed_dirs.txt
+        fi
     id: 'detect-changes'
 
-  # 3. Code Scanning (TFLint)
-  - name: 'ghcr.io/terraform-linters/tflint'
-    entrypoint: 'sh'
+  # 3. Comprehensive Checks (Format, Trivy, TFLint, Plan)
+  - name: 'google/cloud-sdk:latest'
+    entrypoint: 'bash'
     args:
       - '-c'
       - |
-        set -e
+        # Install Terraform
+        apt-get update && apt-get install -y wget gnupg software-properties-common curl unzip
+        wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
+        apt-get update && apt-get install terraform -y
+
+        # Install TFLint
+        curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+
+        # Install Trivy
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | tee /usr/share/keyrings/trivy.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/trivy.list
+        apt-get update && apt-get install trivy -y
+
+        # Prepare Log File
+        LOG_FILE="terraform_plan_${BUILD_ID}.log"
+        echo "--- Terraform Build Log ---" > $$LOG_FILE
+        echo "Build ID: ${BUILD_ID}" >> $$LOG_FILE
+        
         if [ ! -s changed_dirs.txt ]; then
-          echo "No Terraform changes detected. Skipping linting."
+          echo "No changes to process." >> $$LOG_FILE
           exit 0
         fi
 
+        # Run checks and capture ALL output
         for DIR in $(cat changed_dirs.txt); do
           if [ -d "$$DIR" ]; then
-            echo "Starting TFLint for: $$DIR"
-            cd "$$DIR"
-            tflint --init
-            tflint
-            cd - > /dev/null
+            echo "------------------------------------------------" | tee -a $$LOG_FILE
+            echo "Processing Module: $$DIR" | tee -a $$LOG_FILE
+            
+            # A. Format Check
+            echo "[CHECK] Terraform Format" | tee -a $$LOG_FILE
+            terraform -chdir="$$DIR" fmt -check 2>&1 | tee -a $$LOG_FILE || echo "Format check failed" >> $$LOG_FILE
+            
+            # B. Vulnerability Scan (Trivy)
+            echo "[SCAN] Trivy Vulnerability Scan" | tee -a $$LOG_FILE
+            trivy config "$$DIR" 2>&1 | tee -a $$LOG_FILE || echo "Trivy scan failed" >> $$LOG_FILE
+            
+            # C. Linting (TFLint)
+            echo "[LINT] TFLint" | tee -a $$LOG_FILE
+            (cd "$$DIR" && tflint --init && tflint) 2>&1 | tee -a $$LOG_FILE || echo "TFLint failed" >> $$LOG_FILE
+            
+            # D. Init & Plan
+            echo "[PLAN] Terraform Init & Plan" | tee -a $$LOG_FILE
+            (cd "$$DIR" && terraform init -input=false -no-color && terraform plan -input=false -no-color -out=tfplan) 2>&1 | tee -a $$LOG_FILE || echo "Terraform Plan failed" >> $$LOG_FILE
           fi
         done
-    id: 'tflint'
 
-  # 4. Terraform Init and Plan
-  - name: 'hashicorp/terraform:latest'
-    entrypoint: 'sh'
-    args:
-      - '-c'
-      - |
-        set -e
-        if [ ! -s changed_dirs.txt ]; then
-          echo "No Terraform changes detected. Skipping plan."
-          exit 0
-        fi
-
-        for DIR in $(cat changed_dirs.txt); do
-          if [ -d "$$DIR" ]; then
-            echo "------------------------------------------------"
-            echo "Processing Module: $$DIR"
-            cd "$$DIR"
-            if ls *.tf 1> /dev/null 2>&1; then
-              echo "Running 'terraform init'..."
-              terraform init -input=false -no-color
-              echo "Running 'terraform plan'..."
-              terraform plan -input=false -no-color -out=tfplan
-              echo "Plan completed successfully for $$DIR."
-            else
-              echo "Skipping $$DIR (No .tf files found)."
-            fi
-            cd - > /dev/null
-          else
-            echo "Warning: Directory $$DIR was removed or does not exist."
-          fi
-        done
-    id: 'terraform-plan'
+        # Upload the log file to GCS
+        echo "Uploading full plan logs to gs://build_logs_001/cloud-build/$$LOG_FILE"
+        gsutil cp $$LOG_FILE gs://build_logs_001/cloud-build/$$LOG_FILE
+    id: 'terraform-checks'
 
 # Top-level configuration
 logsBucket: 'gs://build_logs_001'
