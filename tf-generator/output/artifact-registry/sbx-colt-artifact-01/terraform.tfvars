@@ -1,0 +1,5 @@
+project_id    = "my-cloud-1"
+repository_id = "sbx-colt-artifact-01"
+location      = "us-central1"
+format        = "DOCKER"
+description   = "Artifact Registry Repository"
