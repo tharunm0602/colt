@@ -1,5 +1,0 @@
-project_id   = "test-dev-1"
-network_name = "dev-analytics-vpc"
-subnet_name  = "dev-analytics-vpc-subnet-01"
-subnet_cidr  = "172.16.0.0/20"
-region       = "us-central1"

@@ -1,5 +1,0 @@
-project_id   = "my-cloud-1"
-network_name = "sbx-colt-vpc"
-subnet_name  = "sbx-colt-vpc-subnet-01"
-subnet_cidr  = "10.0.0.0/24"
-region       = "us-central1"
