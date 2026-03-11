@@ -1,0 +1,295 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - sbx/**
+      - modules/**
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: gcp-sandbox-vars
+  - name: TF_VERSION
+    value: '1.6.0'
+  - name: GCP_PROJECT_ID
+    value: 'colt-sbx-infra-001'
+  - name: GCP_REGION
+    value: 'us-central1'
+
+stages:
+  - stage: Validate
+    displayName: 'Validate Terraform Configurations'
+    jobs:
+      - job: ValidateAll
+        displayName: 'Validate All Sandbox Modules'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - task: Bash@3
+            displayName: 'Terraform Format Check'
+            inputs:
+              targetType: 'inline'
+              workingDirectory: '$(Build.SourcesDirectory)'
+              script: |
+                set -e
+                echo "Checking Terraform formatting in sbx/ and modules/..."
+                terraform fmt -check -recursive sbx/
+                terraform fmt -check -recursive modules/
+
+  - stage: PlanCloudLogging
+    displayName: 'Plan - Cloud Logging'
+    dependsOn: Validate
+    jobs:
+      - job: PlanCloudLogging
+        displayName: 'Plan Cloud Logging'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-logging'
+
+          - template: templates/terraform-validate.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-logging'
+
+          - template: templates/terraform-plan.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-logging'
+              planFile: 'cloud-logging.tfplan'
+
+  - stage: DeployCloudLogging
+    displayName: 'Deploy - Cloud Logging'
+    dependsOn: PlanCloudLogging
+    jobs:
+      - job: DeployCloudLogging
+        displayName: 'Deploy Cloud Logging'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-logging'
+
+          - template: templates/terraform-apply.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-logging'
+              planFile: 'cloud-logging.tfplan'
+
+  - stage: PlanCloudMonitoring
+    displayName: 'Plan - Cloud Monitoring'
+    dependsOn: Validate
+    jobs:
+      - job: PlanCloudMonitoring
+        displayName: 'Plan Cloud Monitoring'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-monitoring'
+
+          - template: templates/terraform-validate.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-monitoring'
+
+          - template: templates/terraform-plan.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-monitoring'
+              planFile: 'cloud-monitoring.tfplan'
+
+  - stage: DeployCloudMonitoring
+    displayName: 'Deploy - Cloud Monitoring'
+    dependsOn: PlanCloudMonitoring
+    jobs:
+      - job: DeployCloudMonitoring
+        displayName: 'Deploy Cloud Monitoring'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-monitoring'
+
+          - template: templates/terraform-apply.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/cloud-monitoring'
+              planFile: 'cloud-monitoring.tfplan'
+
+  - stage: PlanGCS
+    displayName: 'Plan - GCS Bucket'
+    dependsOn: Validate
+    jobs:
+      - job: PlanGCS
+        displayName: 'Plan GCS Bucket'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/gcs'
+
+          - template: templates/terraform-validate.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/gcs'
+
+          - template: templates/terraform-plan.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/gcs'
+              planFile: 'gcs.tfplan'
+
+  - stage: DeployGCS
+    displayName: 'Deploy - GCS Bucket'
+    dependsOn: PlanGCS
+    jobs:
+      - job: DeployGCS
+        displayName: 'Deploy GCS Bucket'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/gcs'
+
+          - template: templates/terraform-apply.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/gcs'
+              planFile: 'gcs.tfplan'
+
+  - stage: PlanServiceAccount
+    displayName: 'Plan - Service Account'
+    dependsOn: Validate
+    jobs:
+      - job: PlanServiceAccount
+        displayName: 'Plan Service Account'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/service-account'
+
+          - template: templates/terraform-validate.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/service-account'
+
+          - template: templates/terraform-plan.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/service-account'
+              planFile: 'service-account.tfplan'
+
+  - stage: DeployServiceAccount
+    displayName: 'Deploy - Service Account'
+    dependsOn: PlanServiceAccount
+    jobs:
+      - job: DeployServiceAccount
+        displayName: 'Deploy Service Account'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/service-account'
+
+          - template: templates/terraform-apply.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/service-account'
+              planFile: 'service-account.tfplan'
+
+  - stage: PlanVertexAI
+    displayName: 'Plan - Vertex AI'
+    dependsOn: Validate
+    jobs:
+      - job: PlanVertexAI
+        displayName: 'Plan Vertex AI'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/vertex-ai'
+
+          - template: templates/terraform-validate.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/vertex-ai'
+
+          - template: templates/terraform-plan.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/vertex-ai'
+              planFile: 'vertex-ai.tfplan'
+
+  - stage: DeployVertexAI
+    displayName: 'Deploy - Vertex AI'
+    dependsOn: PlanVertexAI
+    jobs:
+      - job: DeployVertexAI
+        displayName: 'Deploy Vertex AI'
+        steps:
+          - template: templates/setup-terraform.yml
+            parameters:
+              terraformVersion: $(TF_VERSION)
+
+          - template: templates/terraform-init.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/vertex-ai'
+
+          - template: templates/terraform-apply.yml
+            parameters:
+              workingDirectory: '$(Build.SourcesDirectory)/sbx/vertex-ai'
+              planFile: 'vertex-ai.tfplan'
+
+  - stage: Summary
+    displayName: 'Deployment Summary'
+    dependsOn:
+      - DeployCloudLogging
+      - DeployCloudMonitoring
+      - DeployGCS
+      - DeployServiceAccount
+      - DeployVertexAI
+    jobs:
+      - job: Summary
+        displayName: 'Show Deployment Summary'
+        steps:
+          - task: Bash@3
+            displayName: 'Deployment Summary'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "========================================"
+                echo "Sandbox Deployment Complete!"
+                echo "========================================"
+                echo ""
+                echo "Deployed Components:"
+                echo "  ✅ Cloud Logging API"
+                echo "  ✅ Cloud Monitoring API"
+                echo "  ✅ GCS Storage Bucket"
+                echo "  ✅ Service Account"
+                echo "  ✅ Vertex AI API"
+                echo ""
+                echo "Project ID: $(GCP_PROJECT_ID)"
+                echo "Region: $(GCP_REGION)"
+                echo ""

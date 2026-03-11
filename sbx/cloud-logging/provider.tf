@@ -11,21 +11,19 @@ terraform {
       version = ">= 6.19, < 8"
     }
   }
-}
 
-provider "google" {
-  project = "cloud-practice-dev-2"
-  region  = "us-central1"
-}
-
-provider "google-beta" {
-  project = "cloud-practice-dev-2"
-  region  = "us-central1"
-}
-
-terraform {
   backend "gcs" {
     bucket = "build_logs_001"
     prefix = "sbx/cloud-logging/state"
   }
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
 }

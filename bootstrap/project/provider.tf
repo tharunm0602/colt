@@ -11,18 +11,17 @@ terraform {
       version = ">= 6.19, < 8"
     }
   }
+
+  backend "gcs" {
+    bucket = "build_logs_001"
+    prefix = "bootstrap/project/state"
+  }
 }
 
 provider "google" {
   region  = var.region
 }
+
 provider "google-beta" {
   region  = var.region
-}
-
-terraform {
-  backend "gcs" {
-    bucket = "build_logs_001"
-    prefix = "bootstrap/project/state"
-  }
 }

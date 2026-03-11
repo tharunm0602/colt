@@ -1,4 +1,4 @@
-project_id   = "cloud-practice-dev-2"
+project_id   = "colt-sbx-infra-001"
 region       = "us-central1"
 sa_name      = "sbx-terraform-sa"
 display_name = "Sandbox Terraform Service Account"

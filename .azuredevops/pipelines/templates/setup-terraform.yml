@@ -1,0 +1,41 @@
+parameters:
+  - name: terraformVersion
+    type: string
+    default: '1.6.0'
+
+steps:
+  - task: Bash@3
+    displayName: 'Install Terraform'
+    inputs:
+      targetType: 'inline'
+      script: |
+        set -e
+        echo "Installing Terraform ${{ parameters.terraformVersion }}..."
+        
+        # Download and install Terraform
+        wget -q https://releases.hashicorp.com/terraform/${{ parameters.terraformVersion }}/terraform_${{ parameters.terraformVersion }}_linux_amd64.zip
+        unzip -o terraform_${{ parameters.terraformVersion }}_linux_amd64.zip
+        sudo mv terraform /usr/local/bin/
+        rm terraform_${{ parameters.terraformVersion }}_linux_amd64.zip
+        
+        # Verify installation
+        terraform version
+
+  - task: Bash@3
+    displayName: 'Install gcloud CLI'
+    inputs:
+      targetType: 'inline'
+      script: |
+        set -e
+        
+        # Check if gcloud is already installed
+        if command -v gcloud &> /dev/null; then
+          echo "gcloud CLI already installed"
+          gcloud version
+          exit 0
+        fi
+        
+        echo "Installing gcloud CLI..."
+        curl -sSL https://sdk.cloud.google.com | bash
+        source $HOME/google-cloud-sdk/path.bash.inc
+        gcloud version

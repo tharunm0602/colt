@@ -29,5 +29,5 @@ resource "google_project_iam_member" "vertex_user_role" {
   role     = "roles/aiplatform.user"
   member   = each.value
 
-  depends_on = [google_project_services.vertex_ai_api]
+  depends_on = [google_project_service.vertex_ai_api]
 }

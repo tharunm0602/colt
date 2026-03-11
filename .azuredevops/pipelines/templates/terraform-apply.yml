@@ -1,0 +1,34 @@
+parameters:
+  - name: workingDirectory
+    type: string
+  - name: planFile
+    type: string
+    default: 'tfplan'
+
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Plan Artifact'
+    inputs:
+      artifactName: 'terraform-plan-${{ parameters.workingDirectory }}'
+      targetPath: '${{ parameters.workingDirectory }}'
+
+  - task: Bash@3
+    displayName: 'Terraform Apply'
+    inputs:
+      targetType: 'inline'
+      workingDirectory: '${{ parameters.workingDirectory }}'
+      script: |
+        set -e
+        echo "Applying Terraform plan..."
+        terraform apply -input=false -auto-approve ${{ parameters.planFile }}
+    env:
+      GOOGLE_CREDENTIALS: $(gcp-service-account-key)
+
+  - task: Bash@3
+    displayName: 'Terraform Output'
+    inputs:
+      targetType: 'inline'
+      workingDirectory: '${{ parameters.workingDirectory }}'
+      script: |
+        echo "Terraform Outputs:"
+        terraform output -json

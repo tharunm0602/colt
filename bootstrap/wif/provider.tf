@@ -7,16 +7,14 @@ terraform {
       version = ">= 6.19, < 8"
     }
   }
+
+  backend "gcs" {
+    bucket = "build_logs_001"
+    prefix = "bootstrap/wif/state"
+  }
 }
 
 provider "google" {
   project = var.project_id
   region  = var.region
-}
-
-terraform {
-  backend "gcs" {
-    bucket = "build_logs_001"
-    prefix = "bootstrap/wif/state"
-  }
 }
