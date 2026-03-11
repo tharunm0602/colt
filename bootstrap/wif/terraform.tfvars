@@ -1,0 +1,7 @@
+project_id    = "colt-sbx-infra-001"
+pool_id       = "azure-pool"
+provider_id   = "azure-provider"
+azure_org     = "YOUR_AZURE_DEVOPS_ORG"
+azure_subject = "sc://YOUR_ORG/YOUR_PROJECT/YOUR_SERVICE_CONNECTION"
+sa_id         = "projects/colt-sbx-infra-001/serviceAccounts/bootstrap-sa@colt-sbx-infra-001.iam.gserviceaccount.com"
+region        = "us-central1"
