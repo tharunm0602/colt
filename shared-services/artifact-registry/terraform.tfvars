@@ -1,5 +1,0 @@
-project_id    = "cloud-practice-dev-2"
-region        = "us-central1"
-repository_id = "shared-images"
-location      = "us-central1"
-format        = "DOCKER"

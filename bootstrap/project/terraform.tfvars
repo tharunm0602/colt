@@ -1,5 +1,0 @@
-folder_id       = "folders/YOUR_FOLDER_ID"
-project_name    = "colt-sandbox-infra"
-project_id      = "colt-sbx-infra-001"
-billing_account = "YOUR_BILLING_ACCOUNT_ID"
-region          = "us-central1"
